@@ -1,9 +1,9 @@
 ﻿use Test::More;
-BEGIN { use_ok ( 'CMS::Detector', 'detectCms' ); }
+BEGIN { use_ok ( 'CMS::Detector', 'DetectCms' ); }
 use strict;
 my $cd;
 
-$cd = detectCms('http://dle-news.ru/');
+$cd = DetectCms('http://dle-news.ru/');
 is($cd->getCms, CMS::Detector::CMS_DATALIFE,'MODx: Check for http://dle-news.ru/');
 
 done_testing;

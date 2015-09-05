@@ -1,7 +1,7 @@
 ﻿package CMS::Detector;
  require Exporter;
  @ISA = qw/Exporter/;
- @EXPORT_OK = qw/detectCms/;
+ @EXPORT_OK = qw/DetectCms/;
  use LWP::UserAgent;
  use HTML::TokeParser;
  use Net::DNS;
@@ -38,26 +38,52 @@ BEGIN{
       bless my $self={}, $class;
       @{ $self->{cms} }{ @cms }=0;
       $self->{ns} = [];
+      $self->{favicon} = {};
 
       lock_keys %{$self->{cms}};
       lock_keys %$self;
       return $self;
     }
+
     sub getCms{
       my $self = shift;
       return (grep $self->{cms}{$_}, sort { $self->{cms}{$b} <=> $self->{cms}{$a} } keys %{$self->{cms}})[0];
     }
 
-    sub detectCms{
+    sub getFaviconUrl{
+      my $self = shift;
+      $self->{favicon}{url};
+    }
+
+    use overload '""' => sub{
+        my $self = shift;
+        return $self->getCms;
+    };
+
+    sub DetectCms{
         my($url) = @_;
         my $uri = URI->new($url);
 
+        die CMS::Detector::Exception->new("Wrong url $url")
+                             if !$uri->can('scheme')      || 
+                                 $uri->scheme !~ /https?/ ||
+                                 !$uri->isa('URI::http')  ||
+                                 !$uri->host              ||
+                                 $uri->query              ||
+                                 ($uri->path ne '/' && $uri->path) ||
+                                 split(/\./,$uri->host)<2
+                          ;
+
+        $url = $uri->canonical;
         my $ua = getUa();
         my $resp = $ua->get($url);
-        die "Cannot get specified url:" . $resp->status_line if $resp->is_error;
+        die CMS::Detector::Exception->new("Cannot get specified url:" . $resp->status_line) if $resp->is_error;
+
         my $html = $resp->decoded_content;
-        die "Empty result" if !$html;
+        die CMS::Detector::Exception->new("Empty result") if !$html;
+
         my $rv = CMS::Detector->new;
+        $rv->{favicon} = getFavicon($url, $html);
 
         my $resolver = Net::DNS::Resolver->new();
         my @parts = split /\./, $uri->host;
@@ -82,6 +108,7 @@ BEGIN{
         checkForDatalife($url, $html, $rv);
         checkForOpencart($url, $html, $rv);
 
+        my $tryCount=0;
         while (my $s = shift @sockets){
           if($resolver->bgisready($s)){
              my $reply = $resolver->bgread($s);
@@ -89,6 +116,8 @@ BEGIN{
              push @{$rv->{ns}}, grep $_, map { $_->can('nsdname') && $_->nsdname } $reply->answer;
           }else{
              push @sockets, $s;
+             $tryCount++;
+             last if $tryCount>3;
              sleep 1;
           }
         }
@@ -257,6 +286,21 @@ BEGIN{
         }
      }
    }
+
+   sub getFavicon{
+     my($url, $html) = @_;
+     die CMS::Detector::Exception->new("Invalid parameters: wrong url $url or empty html in getFavicon") if $url !~ m!/$! || !$html;
+
+     my $tp = HTML::TokeParser->new(\$html);
+     while(my $t = $tp->get_token){
+        if($t->[0] eq 'S'){
+           my(undef, $tag, $attr, $tsq, $text) = @$t;
+           if($tag eq 'link' and $attr->{rel} =~ /\bicon\b/){
+             return { url => URI->new_abs($attr->{href}, $url) };
+           }
+        }
+     }
+   }
                                
    sub getUa{
      my $ua = LWP::UserAgent->new(cookie_jar => {});
@@ -264,7 +308,25 @@ BEGIN{
      $ua->default_header(Accept => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
      $ua->default_header('Accept-Encoding' => 'gzip, deflate');
      $ua->default_header('Accept-Language' => 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3');
-     #$ua->default_header(Referer => 'http://ya.ru');
+
      return $ua;
+   }
+
+   {
+      package CMS::Detector::Exception;
+      use Hash::Util qw/lock_keys/;
+
+      sub new{
+          my $class = shift;
+          my($msg, $cause) = @_;
+          my $rv = { msg => $msg, cause => $cause };
+          bless $rv, $class;
+          lock_keys %$rv;
+          return $rv;
+      }
+      use overload '""' => sub{
+         my $self = shift;
+         return $self->{msg};
+      };
    }
 1;

@@ -1,15 +1,15 @@
 ﻿use Test::More;
-BEGIN { use_ok ( 'CMS::Detector', 'detectCms' ); }
+BEGIN { use_ok ( 'CMS::Detector', 'DetectCms' ); }
 use strict;
 my $cd;
 
-$cd = detectCms('http://www.bitrix.ru');
+$cd = DetectCms('http://www.bitrix.ru');
 is($cd->getCms, CMS::Detector::CMS_BITRIX,'Bitrix:Check for http://www.bitrix.ru');
 
-$cd = detectCms('http://thestore.ru/');
+$cd = DetectCms('http://thestore.ru/');
 is($cd->getCms, CMS::Detector::CMS_BITRIX,'Bitrix:Check for http://thestore.ru/');
 
-my $cd = detectCms('http://www.shatura.com/');
+my $cd = DetectCms('http://www.shatura.com/');
 is($cd->getCms, CMS::Detector::CMS_BITRIX,'Bitrix:Check for http://www.shatura.com/');
 
 

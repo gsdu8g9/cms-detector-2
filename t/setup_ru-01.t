@@ -1,12 +1,12 @@
 ﻿use Test::More;
-BEGIN { use_ok ( 'CMS::Detector', 'detectCms' ); }
+BEGIN { use_ok ( 'CMS::Detector', 'DetectCms' ); }
 use strict;
 my $cd;
 
-$cd = detectCms('http://deti-karlovyvary.com/');
+$cd = DetectCms('http://deti-karlovyvary.com/');
 is($cd->getCms, CMS::Detector::CMS_SETUPRU,'Check for http://deti-karlovyvary.com/');
 
-$cd = detectCms('http://disoptorg.ru/');
+$cd = DetectCms('http://disoptorg.ru/');
 is($cd->getCms, CMS::Detector::CMS_SETUPRU,'Check for http://disoptorg.ru/');
 
 done_testing;

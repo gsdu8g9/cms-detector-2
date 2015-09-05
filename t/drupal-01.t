@@ -1,9 +1,9 @@
 ﻿use Test::More;
-BEGIN { use_ok ( 'CMS::Detector', 'detectCms' ); }
+BEGIN { use_ok ( 'CMS::Detector', 'DetectCms' ); }
 use strict;
 my $cd;
 
-$cd = detectCms('http://www.drupal.org');
+$cd = DetectCms('http://www.drupal.org');
 is($cd->getCms, CMS::Detector::CMS_DRUPAL,'Drupal: Check for http://www.drupal.org');
 
 
