@@ -4,6 +4,8 @@
  @EXPORT_OK = qw/detectCms/;
  use LWP::UserAgent;
  use HTML::TokeParser;
+ use Net::DNS;
+ use URI;
  use strict;
  use Hash::Util qw/lock_hash lock_keys/;
  our @cms;
@@ -34,7 +36,8 @@ BEGIN{
     sub new{
       my $class = shift;
       bless my $self={}, $class;
-      @{ $self->{cms} }{ @cms }=0;      
+      @{ $self->{cms} }{ @cms }=0;
+      $self->{ns} = [];
 
       lock_keys %{$self->{cms}};
       lock_keys %$self;
@@ -47,6 +50,8 @@ BEGIN{
 
     sub detectCms{
         my($url) = @_;
+        my $uri = URI->new($url);
+
         my $ua = getUa();
         my $resp = $ua->get($url);
         die "Cannot get specified url:" . $resp->status_line if $resp->is_error;
@@ -54,6 +59,21 @@ BEGIN{
         die "Empty result" if !$html;
         my $rv = CMS::Detector->new;
 
+        my $resolver = Net::DNS::Resolver->new();
+        my @parts = split /\./, $uri->host;
+
+        #шлем асинхронные запросы к DNS по поводу NS-серверов доменов, начиная с верхнего уровня
+        #и заканчивая вторым уровнем, т.е. для a.b.example.com 
+        #пробуем a.b.example.com, b.example.com, example.com
+        my @sockets;
+        for(0 .. $#parts-1){
+          my $tryingHost = join '.', @parts[ $_ .. $#parts];
+          push @sockets, $resolver->bgsend($tryingHost,"NS");
+        }
+        
+        #тут проверяем на CMS в том случае, если для проверки
+        #не требуются NS-сервера
+        #пока мы тут проверяем, ждет ответов от серверов
         checkForWordpress($url, $html, $rv);
         checkForBitrix($url, $html, $rv);
         checkForDrupal($url, $html, $rv);
@@ -61,6 +81,16 @@ BEGIN{
         checkForMODx($url, $html, $rv);
         checkForDatalife($url, $html, $rv);
         checkForOpencart($url, $html, $rv);
+
+        while (my $s = shift @sockets){
+          if($resolver->bgisready($s)){
+             my $reply = $resolver->bgread();
+             next if !$reply;
+             push @{$rv->{ns}}, map $_->nsdname, $reply->answer;
+          }
+        }
+
+        checkForSetupRu($url, $html, $rv);
 
         return $rv;
    }
@@ -179,7 +209,10 @@ BEGIN{
      }
    }
 
-
+   sub checkForSetupRu{
+     my($url, $html, $rv) = @_;
+     $rv->incIsSetupRu if grep /setup\.ru$/, @{ $rv->{ns} };
+   }
                                
    sub getUa{
      my $ua = LWP::UserAgent->new(cookie_jar => {});
