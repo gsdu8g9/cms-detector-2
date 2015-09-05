@@ -12,7 +12,7 @@
 
 BEGIN{
        no strict 'refs';
-       @cms = qw/isWordpress isBitrix isDrupal isJoomla isMODx isDatalife isOpencart isSetupRu isUCoz/;
+       @cms = qw/isWordpress isBitrix isDrupal isJoomla isMODx isDatalife isOpencart isSetupRu isUcoz/;
        for my $e (@cms){
            *{__PACKAGE__ . "::$e"} = sub { 
                        my($self, $val) = @_;
@@ -84,13 +84,17 @@ BEGIN{
 
         while (my $s = shift @sockets){
           if($resolver->bgisready($s)){
-             my $reply = $resolver->bgread();
+             my $reply = $resolver->bgread($s);
              next if !$reply;
-             push @{$rv->{ns}}, map $_->nsdname, $reply->answer;
+             push @{$rv->{ns}}, grep $_, map { $_->can('nsdname') && $_->nsdname } $reply->answer;
+          }else{
+             push @sockets, $s;
+             sleep 1;
           }
         }
 
         checkForSetupRu($url, $html, $rv);
+        checkForUcoz($url, $html, $rv);
 
         return $rv;
    }
@@ -104,16 +108,27 @@ BEGIN{
    
    sub checkForWordpressHtml{
      my($url, $html, $rv) = @_;
+     my $urlObj = URI->new($url);
+     my $urlhost = $urlObj->host;
 
      my $tp = HTML::TokeParser->new(\$html);
      while(my $t = $tp->get_token){
         if($t->[0] eq 'S'){
            my(undef, $tag, $attr, $tsq, $text) = @$t;
            if($tag eq 'script' and $attr->{src} =~ m!/wp-content/!){
+             $attr->{src} = $urlObj->scheme . ":$attr->{src}" if $attr->{src} =~ m!^//!;
+             my $uri = URI->new($attr->{src});
+             next if $uri->can('host') && (split /\./,$uri->host)[-2,-1] ne (split /\./,$urlhost)[-2,-1];
              $rv->incIsWordpress;
            }elsif($tag eq 'link' and $attr->{href} =~ m!/wp-includes/!){
+             $attr->{href} = $urlObj->scheme . ":$attr->{href}" if $attr->{href} =~ m!^//!;
+             my $uri = URI->new($attr->{href});
+             next if $uri->can('host') && (split /\./,$uri->host)[-2,-1] ne (split /\./,$urlhost)[-2,-1];
              $rv->incIsWordpress;
            }elsif($tag eq 'img' and $attr->{src} =~ m!/wp-content/!){
+             $attr->{src} = $urlObj->scheme . ":$attr->{src}" if $attr->{src} =~ m!^//!;
+             my $uri = URI->new($attr->{src});
+             next if $uri->can('host') && (split /\./,$uri->host)[-2,-1] ne (split /\./,$urlhost)[-2,-1];
              $rv->incIsWordpress;
            }
         }
@@ -212,6 +227,35 @@ BEGIN{
    sub checkForSetupRu{
      my($url, $html, $rv) = @_;
      $rv->incIsSetupRu if grep /setup\.ru$/, @{ $rv->{ns} };
+
+     my $tp = HTML::TokeParser->new(\$html);
+     while(my $t = $tp->get_token){
+        if($t->[0] eq 'S'){
+           my(undef, $tag, $attr, $tsq, $text) = @$t;
+           if($tag eq 'script'){
+             my(undef, $txt, $is_data) = @{ $tp->get_token };
+             $rv->incIsSetupRu if $txt =~ /window\.userSiteData/;
+             $rv->incIsSetupRu if $txt =~ /userTariff :/;
+           }
+        }
+     }
+   }
+
+   sub checkForUcoz{
+     my($url, $html, $rv) = @_;
+     $rv->incIsUcoz if grep /(uweb|ucoz)\.(ru|net)$/, @{ $rv->{ns} };
+
+     my $tp = HTML::TokeParser->new(\$html);
+     while(my $t = $tp->get_token){
+        if($t->[0] eq 'S'){
+           my(undef, $tag, $attr, $tsq, $text) = @$t;
+           if($tag eq 'script' and $attr->{src} =~ /\.ucoz\.(ru|net)/ or
+              $tag eq 'link' and $attr->{href} =~ /\.ucoz\.(ru|net)/
+           ){
+             $rv->incIsUcoz
+           }
+        }
+     }
    }
                                
    sub getUa{
