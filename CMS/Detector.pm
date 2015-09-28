@@ -86,6 +86,8 @@ BEGIN{
         $rv->{favicon} = getFavicon($url, $html);
 
         my $resolver = Net::DNS::Resolver->new();
+        $resolver->retrans(2);
+
         my @parts = split /\./, $uri->host;
 
         #шлем асинхронные запросы к DNS по поводу NS-серверов доменов, начиная с верхнего уровня
